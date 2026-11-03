@@ -1,0 +1,13 @@
+# 轻牛健康 MCP server —— 镜像来自 GitHub Actions 自动构建（ghcr.io/aidevjoe/qingniu-mcp:latest）
+# 也可在 NAS 的 Docker 图形界面里手动启动该镜像（见 README §3）。
+services:
+  qingniu-mcp:
+    image: ghcr.io/aidevjoe/qingniu-mcp:latest
+    container_name: qingniu-mcp
+    restart: unless-stopped
+    ports:
+      - "8801:8801"        # 宿主机端口:容器端口（TCP）
+    env_file:
+      - .env               # 含 QN_PHONE / QN_PASSWORD，切勿提交或外传
+    volumes:
+      - ./state:/app/state # 持久化登录 token（可选但推荐）
