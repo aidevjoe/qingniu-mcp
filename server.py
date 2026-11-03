@@ -359,51 +359,60 @@ def _build_summary(member: dict) -> dict:
 # MCP 工具
 # ----------------------------------------------------------------------------
 @mcp.tool()
-async def qn_list_members() -> list:
-    """列出当前账号下的所有成员（家庭成员 / 多用户）。返回 user_id 与 name。"""
+async def qn_list_members() -> dict:
+    """列出当前账号下的所有成员（家庭成员 / 多用户）。返回 user_id 与 name。
+    返回结构固定为单个对象：{"count": N, "members": [...]}，
+    避免 FastMCP 把列表拆成多个内容块导致调用方只拿到第一条。"""
     token = await ensure_token()
     data = await fetch_all(token)
-    return [{"user_id": d["user_id"], "name": d["name"],
-             "record_count": len(d["measurements"]) if isinstance(d["measurements"], list) else 0}
-            for d in data]
+    members = [{"user_id": d["user_id"], "name": d["name"],
+                "record_count": len(d["measurements"]) if isinstance(d["measurements"], list) else 0}
+               for d in data]
+    return {"count": len(members), "members": members}
 
 
 @mcp.tool()
-async def qn_get_summary(user_id: str = "") -> list:
+async def qn_get_summary(user_id: str = "") -> dict:
     """生成每个成员（或指定 user_id）的体成分摘要：最新一次测量值 + 统计窗口内的变化量。
-    适合直接交给 Agent 做趋势分析，无需下载全部原始记录。"""
+    适合直接交给 Agent 做趋势分析，无需下载全部原始记录。
+    返回结构固定为单个对象：{"count": N, "summaries": [...]}。"""
     token = await ensure_token()
     data = await fetch_all(token)
     if user_id:
         m = _resolve_member(data, user_id)
-        return [_build_summary(m)] if m else []
-    return [_build_summary(d) for d in data]
+        summaries = [_build_summary(m)] if m else []
+    else:
+        summaries = [_build_summary(d) for d in data]
+    return {"count": len(summaries), "summaries": summaries}
 
 
 @mcp.tool()
-async def qn_get_measurements(user_id: str = "", days: int = 120, limit: int = 1000) -> list:
+async def qn_get_measurements(user_id: str = "", days: int = 120, limit: int = 1000) -> dict:
     """获取原始体测记录（时间升序）。user_id 留空则用第一个成员。
     days 控制只返回最近 N 天的记录（默认 120）；limit 控制最大条数（默认 1000）。
-    返回字段含 weight/bodyfat/muscle/bmi/bmr/visfat/bodyage 等。"""
+    返回结构固定为单个对象：{"count": N, "measurements": [...]}，
+    避免 FastMCP 把列表拆成多个内容块导致调用方只拿到第一条。"""
     token = await ensure_token()
     data = await fetch_all(token)
     m = _resolve_member(data, user_id)
     if not m:
-        return []
+        return {"count": 0, "measurements": []}
     ms = m.get("measurements")
     if isinstance(ms, dict) and ms.get("error"):
-        return [{"error": ms["error"]}]
+        return {"count": 0, "measurements": [], "error": ms["error"]}
     ms = [x for x in (ms or []) if isinstance(x, dict)]
     if days and days > 0:
         cutoff = int(time.time()) - days * 86400
         ms = [x for x in ms if int(x.get("timestamp") or 0) >= cutoff]
     ms.sort(key=lambda x: int(x.get("timestamp") or 0))
-    return ms[-limit:] if limit else ms
+    out = ms[-limit:] if limit else ms
+    return {"count": len(out), "measurements": out}
 
 
 @mcp.tool()
-async def qn_get_latest(user_id: str = "") -> list:
-    """获取每个成员（或指定 user_id）最近一次的完整体测记录。"""
+async def qn_get_latest(user_id: str = "") -> dict:
+    """获取每个成员（或指定 user_id）最近一次的完整体测记录。
+    返回结构固定为单个对象：{"members": [...]}。"""
     token = await ensure_token()
     data = await fetch_all(token)
     targets = [data[0]] if (user_id and not _resolve_member(data, user_id)) else (
@@ -423,7 +432,7 @@ async def qn_get_latest(user_id: str = "") -> list:
         latest = sorted(ms, key=lambda x: int(x.get("timestamp") or 0))[-1]
         latest["_measured_at"] = _fmt_ts(latest.get("timestamp"))
         out.append({"user_id": m["user_id"], "name": m["name"], "latest": latest})
-    return out
+    return {"members": out}
 
 
 # ----------------------------------------------------------------------------
