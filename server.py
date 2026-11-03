@@ -147,8 +147,9 @@ async def qn_request(
 
     async with httpx.AsyncClient(timeout=20.0) as client:
         if form is not None:
-            resp = await client.request(method.upper(), url, headers=headers,
-                                       content=urlencode(form).encode("utf-8"))
+            # 用 data= 让 httpx 自动以 application/x-www-form-urlencoded 发送并设置 Content-Type，
+            # 与浏览器端 URLSearchParams(form) 行为一致（否则轻牛收不到 sign_type 会报 438）。
+            resp = await client.request(method.upper(), url, headers=headers, data=form)
         else:
             resp = await client.request(method.upper(), url, headers=headers)
         text = resp.text
